@@ -7,9 +7,10 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import Table, Column, Integer, String, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from flask_login import UserMixin, login_user, LoginManager, login_required, current_user, logout_user
-from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm
+from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm, ContactForm
 from flask_gravatar import Gravatar
 from functools import wraps
+import smtplib
 import os
 
 app = Flask(__name__)
@@ -34,6 +35,11 @@ gravatar = Gravatar(app, size=100, rating='g', default='retro', force_default=Fa
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+@app.context_processor
+def inject_year():
+    return {"year": date.today().year}
 
 
 # #CONFIGURE TABLES
@@ -181,9 +187,26 @@ def about():
     return render_template("about.html")
 
 
-@app.route("/contact")
+@app.route("/contact", methods=["POST", "GET"])
+@login_required
 def contact():
-    return render_template("contact.html")
+    contact_form = ContactForm()
+    if contact_form.validate_on_submit():
+
+        email_message = f'Subject: New Message from Jackie\'s Blog\n\n' \
+                        f'Name: {current_user.name}\n' \
+                        f'Email: {current_user.email}\n' \
+                        f'Message: {contact_form.message.data}\n'
+
+        with smtplib.SMTP("smtp.gmail.com") as connection:
+            connection.starttls()
+            connection.login(os.getenv('EMAIL'), os.getenv('EMAIL_PASSWORD'))
+            connection.sendmail(from_addr=os.getenv('EMAIL'),
+                                to_addrs=os.getenv('MY_EMAIL'),
+                                msg=email_message.encode("utf-8")
+                                )
+        return render_template("contact.html", title="Successfully sent your message", form=contact_form)
+    return render_template("contact.html", title="Contact Me", form=contact_form)
 
 
 @app.route("/new-post", methods=["GET", "POST"])
